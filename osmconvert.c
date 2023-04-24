@@ -31,6 +31,7 @@ const char* shorthelptext=
 "--complete-ways           do not clip ways at the borders\n"
 "--complete-multipolygons  do not clip multipolygons at the borders\n"
 "--complete-boundaries     do not clip boundaries at the borders\n"
+"--complete-routeroads       do not clip highways at the borders\n"
 "--all-to-nodes            convert ways and relations to nodes\n"
 "--add-bbox-tags           add bbox tags to ways and relations\n"
 "--add-bboxarea-tags       add tags for estimated bbox areas\n"
@@ -603,6 +604,9 @@ static bool global_complex= false;  // one of the following complex
   // --complete-multipolygons, --complete-boundaries
 static bool global_completemp= false;  // same as global_completeways,
   // but multipolygons are included completely (with all ways and their
+  // nodes), even when only a single nodes lies inside the borders;
+static bool global_completeroutes= false; // same as global_completemp,
+  // but relations are included completely (with all ways and their
   // nodes), even when only a single nodes lies inside the borders;
 static bool global_completeboundaries= false;  // same as global_completeways,
   // but boundaries are included completely (with all ways and their
@@ -10494,6 +10498,7 @@ return 28;
     global_completeways= false;
     global_complex= false;
     global_completemp= false;
+    global_completeroutes= false;
     global_completeboundaries= false;
     }
 
@@ -11261,7 +11266,7 @@ return 23;
             if(!relinside && hash_geti(rt,ri))
               relinside= true;
             if(!wayinside && rt==1 && (strcmp(rr,"outer")==0 ||
-                strcmp(rr,"inner")==0) && hash_geti(1,ri))
+                strcmp(rr,"inner")==0 || global_completeroutes) && hash_geti(1,ri))
                 // referenced object is a way and part of
                 // a multipolygon (or boundary) AND lies inside
               wayinside= true;
@@ -11271,8 +11276,18 @@ return 23;
             hash_seti(2,id);
             if(wayinside) {  // at least one way lies inside
               keyp= key; valp= val;
+              bool isroute = false;
+              bool isrouteroad = false;
               while(keyp<keye) {  // for all key/val pairs of this object
+                if(strcmp(*keyp,"route")==0){
+                  if(strcmp(*valp,"road")==0)
+                    isrouteroad = true;
+                }
                 if(strcmp(*keyp,"type")==0) {
+                  if(global_completeroutes &&
+                      strcmp(*valp,"route")==0)
+                    isroute = true;
+
                   if((global_completemp &&
                         strcmp(*valp,"multipolygon")==0) ||
                       (global_completeboundaries &&
@@ -11282,11 +11297,13 @@ return 23;
                   }
                 keyp++; valp++;
                 }  // for all key/val pairs of this object
+              if(isroute && isrouteroad)
+                ismp = true;
               if(ismp) {  // is multipolygon or boundary
                 refidp= refid; reftypep= reftype; refrolep= refrole;
                 while(refidp<refide) {  // for every referenced object
                   ri= *refidp; rt= *reftypep; rr= *refrolep;
-                  if(rt==1 && (strcmp(rr,"outer")==0 ||
+                  if(rt==1 && (global_completeroutes || strcmp(rr,"outer")==0 ||
                       strcmp(rr,"inner")==0) &&
                       !hash_geti(1,ri)) {  // referenced object
                       // is a way and part of the multipolygon resp.
@@ -12917,6 +12934,12 @@ return 0;
         // the term "--complex-ways" is deprecated but still supported;
       global_complex= true;
       global_completemp= true;
+  continue;  // take next parameter
+      }
+    if(strcmp(a,"--complete-routeroads")==0) {
+        // do not clip relations when applying borders;
+      global_complex= true;
+      global_completeroutes= true;
   continue;  // take next parameter
       }
     if(strcmp(a,"--complete-boundaries")==0) {
